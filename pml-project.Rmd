@@ -1,0 +1,105 @@
+---
+title: "Predicting Quality of Exercise with Machine Learning"
+author: "P. Lichtenstein"
+date: "Friday, August 21, 2015"
+output: html_document
+---
+
+In a novel study of human activity recognition, Vellos et al., (2013) investigate whether qualitative information regarding an activity can be extracted from accelerometer data and transmitted to users as performance-enhancing feedback. While most previous studies have focused on quantitative information with respect to human activity recognition, Vellos et al., demonstrate that qualitative information - i.e., how well a weight lifting exercise was performed -- can aslo be successfully modeled using accelermoter data. For the present project, I build a machine learning algorithm to predict the quality of exercise based on a number of variables from the accelerometer data.
+
+I begin by partitioning the data into training and testing sets using a 75/25 percent split. I then implement a random forest algorithm using the caret package in R. For in-sample error estimation, I specify the use of out-of-bag (oob) error estimation. In OOB error estimation, around one third of the sample cases is excluded from tree construction and then used to create a test set classification. 
+
+```{r include=FALSE, cache=FALSE}
+library(caret)
+library(gbm)
+library(ggplot2)
+library(doParallel)
+set.seed(18181)
+data <- read.csv("pml-training.csv")
+data[data==""] <- NA
+data <- data[, colSums(is.na(data)) < 2000]
+data <- data[, 8:60]
+inTrain <- createDataPartition(data$classe, p=0.75, list=FALSE)
+trainSet <- data[inTrain,]
+testSet <- data[-inTrain,]
+fitControl1 <- trainControl(method="oob", verboseIter=FALSE, returnData=FALSE, classProbs=TRUE, allowParallel=TRUE)
+rfFit1 <- train(classe ~ ., data=trainSet, method="rf", trControl=fitControl1, verbose=FALSE)
+```
+
+The model results indicate that the tuning parameter was tuned to 2, 27, and 52 trees respectively and the optimal model based on accuracy was 27 trees (see output below).
+
+```{r echo=FALSE, include=FALSE, cache=FALSE}
+rfFit1
+```
+
+Next I used the test data to obtain an expected out of sample error using the predict function in caret. I compare the prediction results to the actual classifications, and produce a finding of 99.3 percent correct with a 0.7 percent out-of-sample error expectation.
+
+```{r include=FALSE, cache=FALSE}
+test1 <- predict(rfFit1, testSet)
+predRight <- test1==testSet$classe
+percentRight <- sum(predRight)/length(predRight)
+```
+
+The following confusion matrix summarizes the results.
+
+```{r echo=FALSE}
+cm1 <- confusionMatrix(test1, testSet$classe)
+cm1
+```
+
+In order to explore the effect of validation type on model performance, I fit a new model that again employs a random forest algorithm but uses a k-fold cross validation approach to in-sample error estimation. The performance of this second model is very similar to that of the first model, as can be seen by comparing the following summary with the above summary for the first model (see the output below). 
+
+```{r echo=FALSE, include=FALSE, cache=FALSE}
+fitControl2 <- trainControl(method="cv", number=10, verboseIter=FALSE, returnData=FALSE, classProbs=TRUE, allowParallel=TRUE)
+rfFit2 <- train(classe ~., data=trainSet, method="rf", trControl=fitControl2, verbose=FALSE)
+rfFit2
+```
+
+Testing this second model on the test data similarly produces an out-of-sample expected error of 0.7 percent.
+
+```{r include=FALSE, cache=FALSE}
+test2 <- predict(rfFit1, testSet)
+predRight <- test2==testSet$classe
+percentRight <- sum(predRight)/length(predRight)
+```
+
+The following confusion matrix summarizes the results.
+
+```{r, echo=FALSE}
+cm2 <- confusionMatrix(test2, testSet$classe)
+cm2
+```
+
+Finally, I employ a stochastic gradient boosting algorithm to build a third model for comparison with the random forest models. The gradient boosting algorithm performed slightly less optimal than the random tree models, returning a 96.1% accuracy and a slightly lower kappa value (see output below).
+
+```{r echo=FALSE, include=FALSE, cache=FALSE}
+fitControl3 <- trainControl(method="cv", number=10, verboseIter=FALSE, returnData=FALSE, classProbs=TRUE, allowParallel=TRUE)
+gbmFit1 <- train(classe ~., method="gbm", data=trainSet, trControl=fitControl3, verbose=FALSE)
+gbmFit1
+```
+
+The following plot shows the relationship between estimate performance and the tuning parameters.
+
+```{r, echo=FALSE}
+trellis.par.set(caretTheme())
+plot(gbmFit1)
+```
+
+Testing the GBM model on the test set data results in an expected out-of-sample error rate of 3.5 percent.
+
+```{r include=FALSE, cache=FALSE}
+test3 <- predict(gbmFit1, testSet)
+predRight3 <- test3==testSet$classe
+percentRight3 <- sum(predRight3)/length(predRight3)
+```
+
+The following confusion matrix summarizes the results.
+
+```{r, echo=FALSE}
+cm3 <- confusionMatrix(test3, testSet$classe)
+cm3
+```
+
+Reference:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). Stuttgart, Germany: ACM SIGCHI, 2013.
